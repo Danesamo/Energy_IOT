@@ -1,0 +1,278 @@
+# =============================================================================
+# ENERGY IoT PIPELINE - Docker Compose
+# =============================================================================
+# Infrastructure complète pour le pipeline de données énergétiques
+# Usage: docker compose up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # POSTGRESQL - Stockage des données brutes (OLTP)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: energy_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-energy_db}
+      POSTGRES_USER: ${POSTGRES_USER:-energy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-energy_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-energy_user} -d ${POSTGRES_DB:-energy_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # CLICKHOUSE - Stockage analytique (OLAP)
+  # ---------------------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    container_name: energy_clickhouse
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-energy_analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml:ro
+      - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # POSTGRESQL AIRFLOW - Base de données pour Airflow
+  # ---------------------------------------------------------------------------
+  postgres-airflow:
+    image: postgres:15-alpine
+    container_name: energy_postgres_airflow
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # AIRFLOW WEBSERVER - Interface web d'orchestration
+  # ---------------------------------------------------------------------------
+  airflow-webserver:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: energy_airflow_webserver
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-your-secret-key}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+      # Connexions aux bases de données
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-energy_db}
+      POSTGRES_USER: ${POSTGRES_USER:-energy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-energy_password}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
+      - ./dbt:/opt/airflow/dbt
+    ports:
+      - "8080:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # AIRFLOW SCHEDULER - Planificateur des tâches
+  # ---------------------------------------------------------------------------
+  airflow-scheduler:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: energy_airflow_scheduler
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-energy_db}
+      POSTGRES_USER: ${POSTGRES_USER:-energy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-energy_password}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
+      - ./dbt:/opt/airflow/dbt
+    command: scheduler
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # AIRFLOW INIT - Initialisation de la base Airflow
+  # ---------------------------------------------------------------------------
+  airflow-init:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: energy_airflow_init
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
+    command: version
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # SUPERSET - Tableaux de bord et visualisation
+  # ---------------------------------------------------------------------------
+  superset:
+    image: apache/superset:3.1.0
+    container_name: energy_superset
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-your-superset-secret-key}
+      SUPERSET_LOAD_EXAMPLES: "no"
+      # Base de données PostgreSQL pour les métadonnées Superset
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_DB: ${POSTGRES_DB:-energy_db}
+      DATABASE_USER: ${POSTGRES_USER:-energy_user}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-energy_password}
+    volumes:
+      - superset_data:/app/superset_home
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./dashboards:/app/dashboards
+    ports:
+      - "8088:8088"
+    command: >
+      bash -c "
+        superset db upgrade &&
+        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
+        superset init &&
+        superset run -h 0.0.0.0 -p 8088 --with-threads
+      "
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # GRAFANA - Monitoring et alertes
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: energy_grafana
+    depends_on:
+      - postgres
+      - clickhouse
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - energy_network
+
+  # ---------------------------------------------------------------------------
+  # REDIS - Cache pour Superset (optionnel mais recommandé)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: energy_redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - energy_network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  postgres_data:
+    name: energy_postgres_data
+  postgres_airflow_data:
+    name: energy_postgres_airflow_data
+  clickhouse_data:
+    name: energy_clickhouse_data
+  superset_data:
+    name: energy_superset_data
+  grafana_data:
+    name: energy_grafana_data
+  redis_data:
+    name: energy_redis_data
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  energy_network:
+    name: energy_network
+    driver: bridge
