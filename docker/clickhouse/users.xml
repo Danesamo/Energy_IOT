@@ -7,7 +7,7 @@ ENERGY IoT PIPELINE - ClickHouse Users Configuration
 <clickhouse>
     <users>
         <default>
-            <password></password>
+            <password>Energy26!</password>
             <networks>
                 <ip>::/0</ip>
             </networks>

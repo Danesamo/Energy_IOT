@@ -148,9 +148,10 @@ make ge-run
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **Superset** | http://localhost:8088 | admin / admin |
-| **Airflow** | http://localhost:8080 | airflow / airflow |
-| **Grafana** | http://localhost:3000 | admin / admin |
-| **ClickHouse** | http://localhost:8123 | - |
+| **Airflow** | http://localhost:8080 | admin / H7EpAgSkGXwbhzfR |
+| **Grafana** | http://localhost:3000 | admin / Energy26! |
+| **ClickHouse** | http://localhost:8123 | default / Energy26! |
+| **PostgreSQL** | localhost:5432 | energy_user / Energy26! |
 
 
 ## Données

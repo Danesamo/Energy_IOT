@@ -17,10 +17,10 @@ SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'your-superset-secret-key')
 SQLALCHEMY_DATABASE_URI = (
     f"postgresql://"
     f"{os.environ.get('DATABASE_USER', 'energy_user')}:"
-    f"{os.environ.get('DATABASE_PASSWORD', 'energy_password')}@"
+    f"{os.environ.get('DATABASE_PASSWORD', 'Energy26!')}@"
     f"{os.environ.get('DATABASE_HOST', 'postgres')}:"
     f"{os.environ.get('DATABASE_PORT', '5432')}/"
-    f"superset"
+    f"{os.environ.get('DATABASE_DB', 'energy_db')}"
 )
 
 # -----------------------------------------------------------------------------

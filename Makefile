@@ -40,15 +40,20 @@ setup: ## Initial setup (copy .env, create directories)
 	@touch data/raw/.gitkeep data/processed/.gitkeep
 	@echo "$(GREEN)Setup complete!$(NC)"
 
+build: ## Build custom Docker images (Superset)
+	@echo "$(BLUE)Building custom Docker images...$(NC)"
+	docker compose build superset
+	@echo "$(GREEN)Build complete!$(NC)"
+
 up: ## Start all Docker services
 	@echo "$(BLUE)Starting services...$(NC)"
 	docker compose up -d
 	@echo "$(GREEN)Services started!$(NC)"
 	@echo ""
 	@echo "Available services:"
-	@echo "  - Superset:   http://localhost:8088"
-	@echo "  - Airflow:    http://localhost:8080"
-	@echo "  - Grafana:    http://localhost:3000"
+	@echo "  - Superset:   http://localhost:8088 (admin/admin)"
+	@echo "  - Airflow:    http://localhost:8080 (admin/H7EpAgSkGXwbhzfR)"
+	@echo "  - Grafana:    http://localhost:3000 (admin/Energy26!)"
 	@echo "  - ClickHouse: http://localhost:8123"
 
 down: ## Stop all Docker services
