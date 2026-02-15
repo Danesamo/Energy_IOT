@@ -647,32 +647,30 @@ Planning maintenance preventive
 
 | Dataset | Description | Taille | Lien |
 |---------|-------------|--------|------|
-| **Individual Household Electric Power Consumption** | 4 ans de donnees, 1 mesure/minute | 2M lignes | [UCI/Kaggle](https://www.kaggle.com/datasets/uciml/electric-power-consumption-data-set) |
-| **Smart Meter Electricity Consumption** | Donnees smart meter synthetiques | Variable | [Kaggle](https://www.kaggle.com/datasets/ziya07/smart-meter-electricity-consumption-dataset) |
+| **Smart Meter Electricity Consumption** ✅ | Donnees smart meter avec labels anomalies | Variable | [Kaggle](https://www.kaggle.com/datasets/ziya07/smart-meter-electricity-consumption-dataset) |
 | **SmartMeter Energy Consumption Data** | Consommation Londres | Large | [Kaggle](https://www.kaggle.com/datasets/eyabaklouti/smartmeter-energy-consumption-data) |
 | **Energy Consumption Time Series** | Time series energie | Moyen | [Kaggle](https://www.kaggle.com/datasets/vitthalmadane/energy-consumption-time-series-dataset) |
 
-### 10.2 Dataset UCI recommande
+### 10.2 Dataset retenu : Smart Meter (Kaggle)
 
-**Individual Household Electric Power Consumption**
+**Smart Meter Electricity Consumption Dataset**
 
 | Attribut | Description |
 |----------|-------------|
-| Date | Date (format dd/mm/yyyy) |
-| Time | Heure (format hh:mm:ss) |
-| Global_active_power | Puissance active (kW) |
-| Global_reactive_power | Puissance reactive (kW) |
-| Voltage | Tension (V) |
-| Global_intensity | Intensite (A) |
-| Sub_metering_1 | Cuisine (Wh) |
-| Sub_metering_2 | Buanderie (Wh) |
-| Sub_metering_3 | Chauffage/Clim (Wh) |
+| Timestamp | Horodatage (30 min) |
+| Electricity_Consumed | Consommation (kWh) |
+| Temperature | Temperature exterieure (°C) |
+| Humidity | Humidite relative (%) |
+| Wind_Speed | Vitesse du vent (km/h) |
+| Avg_Past_Consumption | Moyenne historique (kWh) |
+| Anomaly_Label | Label: Normal / Anomaly |
 
 **Caracteristiques :**
-- 2,075,259 mesures (1 mesure/minute)
-- Periode : Decembre 2006 - Novembre 2010
-- 1.25% de valeurs manquantes
-- Format CSV
+- Labels d'anomalies pre-etiquetes (Isolation Forest)
+- Donnees meteo incluses (Temperature, Humidite, Vent)
+- Frequence : 30 minutes (48 mesures/jour)
+- Format CSV standard
+- Licence CC0 Public Domain
 
 ### 10.3 Autres sources
 
@@ -730,7 +728,7 @@ Planning maintenance preventive
 
 Notre projet **Energy IoT Pipeline** va :
 
-1. **Ingerer** des donnees de consommation electrique (dataset UCI/Kaggle)
+1. **Ingerer** des donnees de consommation electrique (Smart Meter Dataset - Kaggle)
 2. **Transformer** avec dbt (agregations, features)
 3. **Valider** avec Great Expectations (qualite)
 4. **Stocker** dans ClickHouse (analytics)
@@ -800,7 +798,7 @@ Notre projet **Energy IoT Pipeline** va :
 - [Time Series Forecasting with Prophet](https://facebook.github.io/prophet/docs/quick_start.html)
 
 ### Datasets
-- [UCI Electric Power Consumption](https://archive.ics.uci.edu/ml/datasets/individual+household+electric+power+consumption)
+- [Smart Meter Dataset (Kaggle)](https://www.kaggle.com/datasets/ziya07/smart-meter-electricity-consumption-dataset)
 - [Kaggle Energy Datasets](https://www.kaggle.com/search?q=energy+consumption)
 
 ---

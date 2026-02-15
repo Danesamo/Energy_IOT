@@ -193,50 +193,58 @@ AVANT (Compteur mécanique)          APRÈS (Smart Meter)
 | Contrainte | Impact | Mitigation |
 |------------|--------|------------|
 | **Budget : 0€** | Outils open-source uniquement | dbt Core (gratuit) vs dbt Cloud |
-| **Dataset public** | Pas de données réelles utilities | UCI/Kaggle datasets |
+| **Dataset public** | Pas de données réelles utilities | Kaggle datasets (Smart Meter) |
 | **Ressources locales** | Machine personnelle | Docker pour optimiser |
 | **Temps : 3 semaines** | Périmètre limité | Focus sur les essentiels |
 
 
 ## 7. DONNÉES
 
-### 7.1 Source : UCI Individual Household Electric Power Consumption
+### 7.1 Source : Smart Meter Dataset (Kaggle)
 
-**Lien :** https://archive.ics.uci.edu/ml/datasets/individual+household+electric+power+consumption
+**Lien :** https://www.kaggle.com/datasets/ziya07/smart-meter-electricity-consumption-dataset
 
 **Pourquoi ce dataset ?**
 
 | Critère | Évaluation |
 |---------|------------|
-| **Granularité** | 1 mesure par minute (2M+ lignes) |
-| **Durée** | 4 ans (2006-2010) |
-| **Réalisme** | Données réelles d'un foyer français |
-| **Complexité** | Valeurs manquantes, sous-compteurs |
-| **Gratuit** | Oui |
+| **Granularité** | 1 mesure toutes les 30 minutes |
+| **Labels d'anomalies** | ✅ Pré-étiquetés (Isolation Forest déjà appliqué) |
+| **Données météo** | ✅ Température, humidité, vitesse du vent |
+| **Format** | CSV standard, propre |
+| **Licence** | CC0 Public Domain (gratuit) |
+| **Contexte** | Adapté pour démonstration détection anomalies |
 
 ### 7.2 Structure des données
 
 | Colonne | Type | Description | Unité |
 |---------|------|-------------|-------|
-| `Date` | DATE | Date de la mesure | dd/mm/yyyy |
-| `Time` | TIME | Heure de la mesure | hh:mm:ss |
-| `Global_active_power` | FLOAT | Puissance active totale | kW |
-| `Global_reactive_power` | FLOAT | Puissance réactive totale | kW |
-| `Voltage` | FLOAT | Tension | V |
-| `Global_intensity` | FLOAT | Intensité | A |
-| `Sub_metering_1` | FLOAT | Cuisine | Wh |
-| `Sub_metering_2` | FLOAT | Buanderie | Wh |
-| `Sub_metering_3` | FLOAT | Chauffage/Climatisation | Wh |
+| `Timestamp` | TIMESTAMP | Horodatage de la mesure | yyyy-mm-dd hh:mm:ss |
+| `Electricity_Consumed` | DECIMAL(10,4) | Consommation électrique | kWh |
+| `Temperature` | DECIMAL(5,2) | Température extérieure | °C |
+| `Humidity` | DECIMAL(5,2) | Humidité relative | % |
+| `Wind_Speed` | DECIMAL(5,2) | Vitesse du vent | km/h |
+| `Avg_Past_Consumption` | DECIMAL(10,4) | Moyenne mobile historique | kWh |
+| `Anomaly_Label` | VARCHAR(20) | Label : Normal ou Anomaly | - |
 
 ### 7.3 Volume et caractéristiques
 
 | Métrique | Valeur |
 |----------|--------|
-| **Nombre de lignes** | 2,075,259 |
-| **Période** | Déc. 2006 - Nov. 2010 |
-| **Fréquence** | 1 minute |
-| **Valeurs manquantes** | ~1.25% |
-| **Taille fichier** | ~130 MB |
+| **Nombre de lignes** | À déterminer après téléchargement |
+| **Fréquence** | 30 minutes (48 mesures/jour) |
+| **Anomalies pré-labellisées** | Oui (détection Isolation Forest) |
+| **Facteurs contextuels** | Météo (température, humidité, vent) |
+| **Format** | CSV |
+
+### 7.4 Contextualisation africaine
+
+**Note importante :** Ce dataset ne provient pas d'Afrique subsaharienne, mais il est adapté pour notre démonstration car :
+
+1. **Labels d'anomalies** : Permet de valider notre modèle ML
+2. **Facteurs météo** : Essentiels pour le contexte africain (forte chaleur, humidité variable)
+3. **Fréquence adaptée** : 30 min = compromis entre granularité et volume de données
+4. **Référence complémentaire** : [Nigeria Electricity Survey 2021](https://www.nature.com/articles/s41597-023-02185-0) pour validation métier
 
 
 ## 8. ARCHITECTURE TECHNIQUE
@@ -250,7 +258,7 @@ AVANT (Compteur mécanique)          APRÈS (Smart Meter)
 │                                                                              │
 │   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐             │
 │   │   CSV    │───▶│ POSTGRES │───▶│   dbt    │───▶│  GREAT   │             │
-│   │  (UCI)   │    │   RAW    │    │ TRANSFORM│    │EXPECTAT. │             │
+│   │ (Kaggle) │    │   RAW    │    │ TRANSFORM│    │EXPECTAT. │             │
 │   └──────────┘    └──────────┘    └──────────┘    └──────────┘             │
 │                                                         │                    │
 │                                                         ▼                    │
@@ -278,7 +286,7 @@ AVANT (Compteur mécanique)          APRÈS (Smart Meter)
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  1. INGESTION                                                                │
-│     CSV (UCI) ──────────────────────────────▶ PostgreSQL (raw_readings)     │
+│   CSV (Kaggle) ────────────────────────────▶ PostgreSQL (raw_readings)      │
 │                                                                              │
 │  2. TRANSFORMATION (dbt)                                                     │
 │     raw_readings ──▶ stg_readings ──▶ int_hourly ──▶ mart_daily_metrics    │
@@ -394,7 +402,7 @@ Semaine 1                 Semaine 2                 Semaine 3
 | Jour | Tâches | Livrable |
 |------|--------|----------|
 | **J1-J2** | Structure projet, Docker Compose, PostgreSQL | Infra de base |
-| **J3-J4** | Ingestion données UCI, exploration | Données dans PostgreSQL |
+| **J3-J4** | Ingestion données Smart Meter, exploration | Données dans PostgreSQL |
 | **J5-J7** | Modèles dbt (staging, intermediate) | Transformations OK |
 | **J8-J9** | Modèles dbt (marts) + tests | Pipeline dbt complet |
 | **J10-J11** | Great Expectations setup + suites | Data quality OK |

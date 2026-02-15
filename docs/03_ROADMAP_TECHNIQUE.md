@@ -111,7 +111,7 @@ Source → Base de données → [Transformation SQL dans la base]
 | **Cas d'usage** | Rapports, analytics | Alertes temps réel |
 
 **Notre contexte :**
-- Dataset UCI = données historiques (2006-2010)
+- Dataset Smart Meter (Kaggle) = données Smart Meter avec labels anomalies
 - Objectif = analyser des patterns, pas réagir en temps réel
 - Un DAG Airflow quotidien suffit
 
@@ -326,15 +326,19 @@ expect_column_values_to_be_between(
 ---
 
 ### Phase 2 : Ingestion des données
-**Objectif** : Charger les données UCI dans PostgreSQL
+**Objectif** : Charger les données Smart Meter (Kaggle) dans PostgreSQL
 
 | Livrable | Description | Fichiers |
 |----------|-------------|----------|
-| Script téléchargement | Curl UCI dataset | Dans Makefile |
+| Script téléchargement | Kaggle CLI download | Dans Makefile (`make download-data`) |
 | Script ingestion | CSV → PostgreSQL | `src/ingestion/load_data.py` |
-| Validation ingestion | Vérifier le nombre de lignes | Tests |
+| Validation ingestion | Vérifier le nombre de lignes | Tests SQL |
 
-**Critère de succès** : 2,075,259 lignes dans `raw_data.meter_readings`.
+**Dataset** : [Smart Meter Dataset (Kaggle)](https://www.kaggle.com/datasets/ziya07/smart-meter-electricity-consumption-dataset)
+
+**Colonnes attendues** : Timestamp, Electricity_Consumed, Temperature, Humidity, Wind_Speed, Avg_Past_Consumption, Anomaly_Label
+
+**Critère de succès** : Toutes les lignes du dataset chargées dans `raw_data.meter_readings` (volumétrie à déterminer après téléchargement).
 
 ---
 
@@ -391,19 +395,20 @@ dbt/
 
 ```yaml
 # raw_readings_suite
-- expect_column_to_exist: [reading_date, reading_time, global_active_power, ...]
-- expect_column_values_to_not_be_null: [reading_date, reading_time]
+- expect_column_to_exist: [timestamp, electricity_consumed, temperature, ...]
+- expect_column_values_to_not_be_null: [timestamp, electricity_consumed]
 - expect_column_values_to_be_between:
-    column: voltage
-    min: 200
-    max: 260
+    column: temperature
+    min: -50
+    max: 60
 - expect_column_values_to_be_between:
-    column: global_active_power
+    column: electricity_consumed
     min: 0
-    max: 15
-- expect_table_row_count_to_be_between:
-    min: 2000000
-    max: 2100000
+    max: 100
+- expect_column_values_to_be_between:
+    column: humidity
+    min: 0
+    max: 100
 ```
 
 **Fichiers :**
@@ -437,16 +442,16 @@ great_expectations/
 
 | Feature | Description | Calcul |
 |---------|-------------|--------|
-| `avg_power_1h` | Puissance moyenne sur 1h | AVG sur fenêtre 1h |
-| `avg_power_24h` | Puissance moyenne sur 24h | AVG sur fenêtre 24h |
-| `std_power_24h` | Écart-type sur 24h | STDDEV sur fenêtre 24h |
-| `power_vs_avg_ratio` | Ratio vs moyenne historique | current / avg_24h |
+| `avg_consumption_1h` | Consommation moyenne sur 1h | AVG sur fenêtre 1h |
+| `avg_consumption_24h` | Consommation moyenne sur 24h | AVG sur fenêtre 24h |
+| `std_consumption_24h` | Écart-type sur 24h | STDDEV sur fenêtre 24h |
+| `consumption_vs_avg_ratio` | Ratio vs moyenne historique | current / avg_24h |
 | `hour_of_day` | Heure (0-23) | EXTRACT(HOUR) |
 | `day_of_week` | Jour (0-6) | EXTRACT(DOW) |
 | `is_weekend` | Flag weekend | CASE WHEN dow IN (0,6) |
-| `sub1_ratio` | Part sous-compteur cuisine | sub1 / total |
-| `sub2_ratio` | Part sous-compteur buanderie | sub2 / total |
-| `sub3_ratio` | Part sous-compteur chauffage | sub3 / total |
+| `temperature` | Température extérieure | Depuis dataset |
+| `humidity` | Humidité relative | Depuis dataset |
+| `wind_speed` | Vitesse du vent | Depuis dataset |
 
 **Fichiers :**
 ```
@@ -665,8 +670,8 @@ monitoring/
 │  4. VALIDATION                                                               │
 │  ┌──────────────────────┐                                                   │
 │  │ Expectations:        │  - Pas de nulls critiques                         │
-│  │ - Complétude         │  - Voltage entre 200-260V                         │
-│  │ - Plages valides     │  - Power entre 0-15 kW                            │
+│  │ - Complétude         │  - Temperature entre -50 et 60°C                  │
+│  │ - Plages valides     │  - Humidity entre 0-100%                          │
 │  │ - Cohérence          │  - Dates cohérentes                               │
 │  └──────────┬───────────┘                                                   │
 │             │                                                                │
@@ -831,7 +836,7 @@ monitoring/
 | Jour | Tâches |
 |------|--------|
 | J1 | Valider docker-compose, démarrer tous les services |
-| J2 | Télécharger dataset UCI, explorer les données |
+| J2 | Télécharger dataset Smart Meter (Kaggle), explorer les données |
 | J3 | Implémenter script d'ingestion Python |
 | J4 | Tester ingestion, vérifier données dans PostgreSQL |
 | J5 | Documenter, commit |
@@ -1076,10 +1081,10 @@ make logs
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Superset | http://localhost:8088 | admin / admin |
-| Airflow | http://localhost:8080 | airflow / airflow |
-| Grafana | http://localhost:3000 | admin / admin |
-| ClickHouse | http://localhost:8123 | - |
-| PostgreSQL | localhost:5432 | energy_user / energy_password |
+| Airflow | http://localhost:8080 | admin / H7EpAgSkGXwbhzfR |
+| Grafana | http://localhost:3000 | admin / Energy26! |
+| ClickHouse | http://localhost:8123 | default / Energy26! |
+| PostgreSQL | localhost:5432 | energy_user / Energy26! |
 
 ---
 
