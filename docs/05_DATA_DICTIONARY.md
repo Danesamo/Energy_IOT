@@ -2,7 +2,7 @@
 
 > **Dictionnaire de données** - Référence technique complète des tables, colonnes et relations
 >
-> Dernière mise à jour : 14 Février 2026
+> Dernière mise à jour : 17 Février 2026
 
 ---
 
@@ -86,7 +86,16 @@ Ce document décrit la structure complète des données du projet Energy IoT Pip
 
 **Fréquence d'alimentation :** Une fois (données historiques)
 
-**Volumétrie estimée :** TBD après téléchargement
+**Volumétrie réelle :**
+- **Lignes totales :** 5,000 mesures
+- **Période couverte :** 2024-01-01 00:00:00 à 2024-04-14 03:30:00 (~104 jours)
+- **Fréquence mesure :** 30 minutes (48 mesures/jour)
+- **Taille fichier CSV :** 605.2 KB
+- **Distribution anomalies :**
+  - Normal : 4,750 (95.0%)
+  - Abnormal : 250 (5.0%)
+- **Valeurs NULL :** 0 (aucune)
+- **Date d'ingestion :** 17 Février 2026
 
 #### Structure
 
@@ -94,14 +103,37 @@ Ce document décrit la structure complète des données du projet Energy IoT Pip
 |---------|------|-------------|-------------|---------|
 | `id` | SERIAL | PK, NOT NULL | Identifiant unique auto-incrémenté | 1, 2, 3... |
 | `timestamp` | TIMESTAMP | NOT NULL | Horodatage de la mesure (intervalle 30 min) | 2024-01-15 14:30:00 |
-| `electricity_consumed` | DECIMAL(10,4) | | Consommation électrique en kWh | 2.3450 |
-| `temperature` | DECIMAL(5,2) | | Température extérieure en degrés Celsius | 28.50 |
-| `humidity` | DECIMAL(5,2) | | Humidité relative en pourcentage | 65.00 |
-| `wind_speed` | DECIMAL(5,2) | | Vitesse du vent en km/h | 12.30 |
-| `avg_past_consumption` | DECIMAL(10,4) | | Moyenne mobile de consommation passée (kWh) | 2.1000 |
-| `anomaly_label` | VARCHAR(20) | | Label pré-étiqueté : Normal ou Anomaly | Normal, Anomaly |
-| `ingested_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Date/heure d'ingestion dans la base | 2026-02-14 10:30:00 |
+| `electricity_consumed` | DECIMAL(10,4) | | Consommation électrique **normalisée (0-1)** ⚠️ | 0.4578 |
+| `temperature` | DECIMAL(5,2) | | Température extérieure **normalisée (0-1)** ⚠️ | 0.47 |
+| `humidity` | DECIMAL(5,2) | | Humidité relative **normalisée (0-1)** ⚠️ | 0.40 |
+| `wind_speed` | DECIMAL(5,2) | | Vitesse du vent **normalisée (0-1)** ⚠️ | 0.45 |
+| `avg_past_consumption` | DECIMAL(10,4) | | Moyenne mobile consommation passée **normalisée (0-1)** ⚠️ | 0.6921 |
+| `anomaly_label` | VARCHAR(20) | | Label pré-étiqueté (Isolation Forest) : Normal ou Abnormal | Normal, Abnormal |
+| `ingested_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Date/heure d'ingestion dans la base | 2026-02-17 12:04:38 |
 | `source_file` | VARCHAR(255) | | Nom du fichier source CSV | smart_meter_data.csv |
+
+#### ⚠️ Note importante : Normalisation des données
+
+**Toutes les valeurs numériques (sauf `id` et `timestamp`) sont normalisées entre 0 et 1.**
+
+Cette normalisation a été appliquée par l'auteur du dataset Kaggle. Les transformations dbt (Phase 3) incluront la **dénormalisation** pour obtenir des valeurs métier interprétables :
+
+| Colonne brute | Plage normalisée | Plage réelle estimée | Transformation dbt |
+|---------------|------------------|----------------------|-------------------|
+| `electricity_consumed` | 0.0 - 1.0 | 0 - 10 kWh | `consumption_kwh_real` |
+| `temperature` | 0.0 - 1.0 | 15°C - 45°C | `temperature_celsius` |
+| `humidity` | 0.0 - 1.0 | 0% - 100% | `humidity_pct` |
+| `wind_speed` | 0.0 - 1.0 | 0 - 50 km/h | `wind_speed_kmh` |
+
+**Statistiques des données normalisées :**
+
+| Métrique | Normal (95%) | Abnormal (5%) |
+|----------|--------------|---------------|
+| Consommation moyenne | 0.3766 | 0.3790 |
+| Consommation max | 0.7597 | 1.0000 |
+| Écart moyen absolu vs historique | 0.1553 | **0.2664** (+71%) |
+
+**Critère de détection d'anomalie :** Écart important entre `electricity_consumed` et `avg_past_consumption` (ratio > 71% plus élevé pour les anomalies).
 
 #### Index
 
@@ -114,22 +146,39 @@ Ce document décrit la structure complète des données du projet Energy IoT Pip
 
 | Règle | Description | Validé par |
 |-------|-------------|------------|
-| Timestamp unique | Pas de doublons sur timestamp | Great Expectations |
-| Consommation >= 0 | Valeurs négatives impossibles | Great Expectations |
-| Température plausible | -50°C <= temp <= 60°C | Great Expectations |
-| Humidité plausible | 0% <= humidity <= 100% | Great Expectations |
+| Timestamp unique | Pas de doublons sur timestamp ✅ | Great Expectations |
+| Plages normalisées | 0.0 <= valeur <= 1.0 pour toutes colonnes numériques | Great Expectations |
+| Valeurs NULL | Aucune valeur NULL acceptée ✅ | Great Expectations |
+| Anomaly_label | Uniquement 'Normal' ou 'Abnormal' ✅ | Great Expectations |
+| Distribution anomalies | 3-7% d'anomalies attendu (observé: 5.0%) ✅ | Monitoring |
 
-#### Exemple de données
+#### Exemples de données réelles
+
+**Données normales :**
 
 ```sql
-SELECT * FROM raw_data.meter_readings LIMIT 3;
+SELECT * FROM raw_data.meter_readings WHERE anomaly_label = 'Normal' ORDER BY timestamp LIMIT 3;
 ```
 
 | id | timestamp | electricity_consumed | temperature | humidity | wind_speed | avg_past_consumption | anomaly_label | ingested_at | source_file |
 |----|-----------|---------------------|-------------|----------|------------|---------------------|---------------|-------------|-------------|
-| 1 | 2024-01-01 00:00:00 | 2.3450 | 22.50 | 65.00 | 10.50 | 2.1000 | Normal | 2026-02-14 10:30:00 | smart_meter_data.csv |
-| 2 | 2024-01-01 00:30:00 | 2.1200 | 22.30 | 66.00 | 11.00 | 2.1500 | Normal | 2026-02-14 10:30:00 | smart_meter_data.csv |
-| 3 | 2024-01-01 01:00:00 | 5.8000 | 22.00 | 67.00 | 12.00 | 2.2000 | Anomaly | 2026-02-14 10:30:00 | smart_meter_data.csv |
+| 1 | 2024-01-01 00:00:00 | 0.4578 | 0.47 | 0.40 | 0.45 | 0.6921 | Normal | 2026-02-17 12:04:38 | smart_meter_data.csv |
+| 2 | 2024-01-01 00:30:00 | 0.3520 | 0.47 | 0.45 | 0.46 | 0.5399 | Normal | 2026-02-17 12:04:38 | smart_meter_data.csv |
+| 3 | 2024-01-01 01:00:00 | 0.4829 | 0.29 | 0.41 | 0.47 | 0.6147 | Normal | 2026-02-17 12:04:38 | smart_meter_data.csv |
+
+**Exemples d'anomalies :**
+
+```sql
+SELECT * FROM raw_data.meter_readings WHERE anomaly_label = 'Abnormal' ORDER BY timestamp LIMIT 3;
+```
+
+| id | timestamp | electricity_consumed | avg_past_consumption | écart | temperature | anomaly_label |
+|----|-----------|---------------------|----------------------|-------|-------------|---------------|
+| 20 | 2024-01-01 09:30:00 | 0.1396 | 0.0750 | +0.0646 | 0.58 | Abnormal |
+| 21 | 2024-01-01 10:00:00 | 0.6193 | 0.1674 | **+0.4519** | 0.52 | Abnormal |
+| 64 | 2024-01-02 13:00:00 | **0.0000** | 0.6065 | **-0.6065** | 0.55 | Abnormal |
+
+**Observation :** Les anomalies présentent des écarts importants avec `avg_past_consumption` (±0.45 en moyenne vs ±0.15 pour données normales).
 
 ---
 
@@ -373,21 +422,27 @@ staging.stg_meter_readings (1)
 
 ### Gestion des outliers
 
-| Champ | Plage valide | Action hors plage |
-|-------|--------------|-------------------|
-| electricity_consumed | >= 0 | Rejet ou imputation |
-| temperature | -50°C à 60°C | Rejet ou imputation |
-| humidity | 0% à 100% | Rejet ou imputation |
-| wind_speed | >= 0 | Rejet ou imputation |
+**Note :** Données normalisées 0-1, pas d'outliers hors plage dans le dataset source.
+
+| Champ | Plage valide (normalisée) | Plage observée | Action hors plage |
+|-------|--------------------------|----------------|-------------------|
+| electricity_consumed | 0.0 - 1.0 | 0.0000 - 1.0000 | Rejet si hors [0,1] |
+| temperature | 0.0 - 1.0 | 0.29 - 0.77 | Rejet si hors [0,1] |
+| humidity | 0.0 - 1.0 | 0.21 - 0.76 | Rejet si hors [0,1] |
+| wind_speed | 0.0 - 1.0 | 0.37 - 0.58 | Rejet si hors [0,1] |
+
+**Détection d'anomalies métier :** Basée sur l'écart avec `avg_past_consumption`, non sur les valeurs absolues.
 
 ---
 
 ## Évolutions futures
 
-### Phase 2 : Ingestion
-- [ ] Documenter volumétrie réelle après téléchargement
-- [ ] Ajouter exemples de données réelles
-- [ ] Documenter temps d'ingestion
+### Phase 2 : Ingestion ✅
+- [x] Documenter volumétrie réelle après téléchargement (5,000 lignes, 605 KB)
+- [x] Ajouter exemples de données réelles (Normal et Abnormal)
+- [x] Documenter statistiques anomalies (95% Normal, 5% Abnormal)
+- [x] Documenter normalisation des données (0-1)
+- [x] Temps d'ingestion : ~1 seconde pour 5,000 lignes
 
 ### Phase 3 : dbt
 - [ ] Compléter structure tables staging/intermediate/marts
